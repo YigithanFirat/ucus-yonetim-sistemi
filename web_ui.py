@@ -9,7 +9,7 @@ from utils.validation import is_valid_name, is_valid_phone, is_valid_date
 st.set_page_config(page_title="Uçuş Yönetim Sistemi")
 st.title("🛫 Uçuş Yönetim Sistemi")
 
-
+create_tables()
 
 
 menu = st.sidebar.selectbox("İşlem Seçin", [
