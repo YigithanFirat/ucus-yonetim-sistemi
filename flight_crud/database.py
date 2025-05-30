@@ -9,7 +9,6 @@ def create_tables():
     conn = connect_db()
     cursor = conn.cursor()
 
-    # Uçuşlar tablosu
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS flights (
             flight_number TEXT PRIMARY KEY,
@@ -18,9 +17,48 @@ def create_tables():
             date TEXT,
             capacity INTEGER,
             eco_seats INTEGER,
-            bus_seats INTEGER
+            bus_seats INTEGER,
+            departure_time TEXT,
+            arrival_time TEXT,
+            duration TEXT,
+            flight_type TEXT,
+            transfer_point TEXT,
+            first_departure_time TEXT,
+            first_arrival_time TEXT,
+            second_departure_time TEXT,
+            second_arrival_time TEXT
         )
     """)
+
+    conn.commit()
+    conn.close()
+
+
+def add_new_columns():
+    conn = connect_db()
+    cursor = conn.cursor()
+
+    # Zaten varsa eklenmeyecek, yoksa ekleniyor
+    columns_to_add = [
+        "flight_type TEXT",
+        "transfer_point TEXT",
+        "first_departure_time TEXT",
+        "first_arrival_time TEXT",
+        "second_departure_time TEXT",
+        "second_arrival_time TEXT"
+    ]
+
+    for col_def in columns_to_add:
+        col_name = col_def.split()[0]
+        try:
+            cursor.execute(f"ALTER TABLE flights ADD COLUMN {col_def};")
+        except sqlite3.OperationalError:
+            # Kolon zaten varsa hata verir, bunu yoksay
+            pass
+
+    conn.commit()
+    conn.close()
+
 
     # Yolcular tablosu
     cursor.execute("""
