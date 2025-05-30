@@ -1,22 +1,67 @@
 import sqlite3
-import pandas as pd
+from datetime import datetime, timedelta
 
 DB_NAME = "flights.db"
 
-def create_flight(flight_number, departure, arrival, date, capacity, eco_seats, bus_seats):
+from datetime import datetime, timedelta
+
+def calculate_duration_between(start_time, end_time):
+    """
+    İki saat arasındaki süreyi "X saat Y dakika" formatında hesaplar.
+    Gece geçişini (23:00 - 01:00 gibi) de destekler.
+    """
+    fmt = "%H:%M"
+    try:
+        start = datetime.strptime(start_time, fmt)
+        end = datetime.strptime(end_time, fmt)
+
+        # Eğer bitiş zamanı başlama zamanından önceyse, gece geçişi demektir
+        if end < start:
+            end += timedelta(days=1)
+
+        diff = end - start
+        total_minutes = diff.seconds // 60
+        hours = total_minutes // 60
+        minutes = total_minutes % 60
+
+        return f"{hours} saat {minutes} dakika"
+    except Exception as e:
+        return None
+
+
+def create_flight(flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
+                  departure_time=None, arrival_time=None,
+                  flight_type=None, transfer_point=None,
+                  first_departure_time=None, first_arrival_time=None,
+                  second_departure_time=None, second_arrival_time=None):
+    
+    # Süreyi otomatik hesapla
+    duration = None
+    if flight_type == "Aktarmasız Uçuş" and departure_time and arrival_time:
+        duration = calculate_duration_between(departure_time, arrival_time)
+    elif flight_type == "Aktarmalı Uçuş" and first_departure_time and second_arrival_time:
+        duration = calculate_duration_between(first_departure_time, second_arrival_time)
+    
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            INSERT INTO flights (flight_number, departure, arrival, date, capacity, eco_seats, bus_seats)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (flight_number, departure, arrival, date, capacity, eco_seats, bus_seats))
+            INSERT INTO flights 
+            (flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
+             departure_time, arrival_time, duration, flight_type, transfer_point,
+             first_departure_time, first_arrival_time, second_departure_time, second_arrival_time)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
+              departure_time, arrival_time, duration, flight_type, transfer_point,
+              first_departure_time, first_arrival_time, second_departure_time, second_arrival_time))
         conn.commit()
-        print(f"{flight_number} uçuşu başarıyla oluşturuldu.")
+        return True, f"{flight_number} uçuşu başarıyla oluşturuldu. Süre: {duration if duration else 'Hesaplanamadı'}"
     except sqlite3.IntegrityError:
-        print("Bu uçuş numarası zaten mevcut!")
+        return False, "Bu uçuş numarası zaten mevcut!"
     finally:
         conn.close()
+
+
 
 def delete_flight(flight_number):
     conn = sqlite3.connect(DB_NAME)
