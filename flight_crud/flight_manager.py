@@ -1,9 +1,31 @@
 import sqlite3
 from datetime import datetime, timedelta
+import pandas as pd
+import streamlit as st
 
 DB_NAME = "flights.db"
 
 from datetime import datetime, timedelta
+
+def calculate_flight_duration(departure, arrival):
+    fmt = "%H:%M"
+    departure_time = datetime.strptime(departure, fmt)
+    arrival_time = datetime.strptime(arrival, fmt)
+
+    if arrival_time < departure_time:
+        arrival_time += timedelta(days=1)
+
+    duration = arrival_time - departure_time
+    return duration.seconds // 60  # dakika cinsinden
+
+def calculate_duration_minutes(departure, arrival):
+    fmt = "%H:%M"
+    departure_time = datetime.strptime(departure, fmt)
+    arrival_time = datetime.strptime(arrival, fmt)
+    if arrival_time < departure_time:
+        arrival_time += timedelta(days=1)
+    return (arrival_time - departure_time).seconds // 60
+
 
 def calculate_duration_between(start_time, end_time):
     """
@@ -29,39 +51,52 @@ def calculate_duration_between(start_time, end_time):
         return None
 
 
-def create_flight(flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
-                  departure_time=None, arrival_time=None,
-                  flight_type=None, transfer_point=None,
-                  first_departure_time=None, first_arrival_time=None,
-                  second_departure_time=None, second_arrival_time=None):
-    
-    # Süreyi otomatik hesapla
-    duration = None
-    if flight_type == "Aktarmasız Uçuş" and departure_time and arrival_time:
+def create_flight(
+    flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
+    departure_time=None, arrival_time=None,
+    flight_type=None, transfer_point=None,
+    first_departure_time=None, first_arrival_time=None,
+    second_departure_time=None, second_arrival_time=None,
+    duration=None
+):
+    # duration'ı hesapla ve güncelle
+    if flight_type == "Direk Uçuş" and departure_time and arrival_time:
         duration = calculate_duration_between(departure_time, arrival_time)
     elif flight_type == "Aktarmalı Uçuş" and first_departure_time and second_arrival_time:
         duration = calculate_duration_between(first_departure_time, second_arrival_time)
-    
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
+    else:
+        duration = None  # ya da "Bilinmiyor" gibi bir değer de atanabilir
+
     try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
         cursor.execute("""
-            INSERT INTO flights 
-            (flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
-             departure_time, arrival_time, duration, flight_type, transfer_point,
-             first_departure_time, first_arrival_time, second_departure_time, second_arrival_time)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (flight_number, departure, arrival, date, capacity, eco_seats, bus_seats,
-              departure_time, arrival_time, duration, flight_type, transfer_point,
-              first_departure_time, first_arrival_time, second_departure_time, second_arrival_time))
+            INSERT INTO flights (
+                flight_number, departure, arrival, date, capacity,
+                eco_seats, bus_seats, departure_time, arrival_time,
+                duration, flight_type, transfer_point,
+                first_departure_time, first_arrival_time,
+                second_departure_time, second_arrival_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            flight_number, departure, arrival, date, capacity,
+            eco_seats, bus_seats, departure_time, arrival_time,
+            duration, flight_type, transfer_point,
+            first_departure_time, first_arrival_time,
+            second_departure_time, second_arrival_time
+        ))
         conn.commit()
-        return True, f"{flight_number} uçuşu başarıyla oluşturuldu. Süre: {duration if duration else 'Hesaplanamadı'}"
+        return True, f"{flight_number} uçuşu başarıyla oluşturuldu."
+
     except sqlite3.IntegrityError:
         return False, "Bu uçuş numarası zaten mevcut!"
+
+    except Exception as e:
+        return False, f"Veritabanı hatası: {e}"
+
     finally:
-        conn.close()
-
-
+        if conn:
+            conn.close()
 
 def delete_flight(flight_number):
     conn = sqlite3.connect(DB_NAME)
@@ -119,25 +154,39 @@ def list_passengers(flight_number):
 
 
 def list_flights_by_date(date):
-    conn = sqlite3.connect("flights.db")
-    cursor = conn.cursor()
 
-    cursor.execute("SELECT * FROM flights WHERE date = ?", (date,))
-    flights = cursor.fetchall()
+    try:
+        conn = sqlite3.connect("flights.db")
+        cursor = conn.cursor()
 
-    if flights:
-        print(f"\n📅 {date} tarihli uçuşlar:")
-        for flight in flights:
-            print(f"Flight: {flight[0]} | Departure: {flight[1]} | Arrival: {flight[2]} | Date: {flight[3]} | Capacity: {flight[4]} | Eco: {flight[5]} | Bus: {flight[6]}")
-    else:
-        print(f"\n❌ {date} tarihindeki uçuşlar bulunamadı.")
+        cursor.execute("SELECT * FROM flights WHERE date = ?", (date,))
+        flights = cursor.fetchall()
+
+        if flights:
+            print(f"\n📅 {date} tarihli uçuşlar:")
+            for flight in flights:
+                print(f"""
+🔹 Uçuş Numarası: {flight[0]}
+   Kalkış: {flight[1]} ➜ Varış: {flight[2]}
+   Uçuş Tipi: {flight[10]} | Tarih: {flight[3]} | Kapasite: {flight[4]}
+   Ekonomi: {flight[5]} | Business: {flight[6]}
+   Direkt Saatler: {flight[7]} ➜ {flight[8]} | Süre: {flight[9]}
+   Aktarma Noktası: {flight[11] if flight[11] else 'Yok'}
+   1. Uçuş: {flight[12]} ➜ {flight[13]}
+   2. Uçuş: {flight[14]} ➜ {flight[15]}
+                """)
+        else:
+            print(f"\n❌ {date} tarihindeki uçuşlar bulunamadı.")
     
-    conn.close()
-
-
-
+    except Exception as e:
+        print(f"⚠️ Hata oluştu: {e}")
+    
+    finally:
+        if conn:
+            conn.close()
 
 def list_all_flights():
+
     conn = sqlite3.connect("flights.db")
     cursor = conn.cursor()
 
@@ -145,15 +194,49 @@ def list_all_flights():
     flights = cursor.fetchall()
     conn.close()
 
-    # Eğer veri varsa DataFrame'e çevir, yoksa boş DataFrame döndür
+    # Veritabanındaki sütun sıralamasıyla tam uyumlu olmalı!
+    columns = [
+        "Uçuş Numarası",         # 0
+        "Kalkış Noktası",        # 1
+        "Varış Noktası",         # 2
+        "Uçuş Tarihi",           # 3
+        "Toplam Kapasite",       # 4
+        "Ekonomi Koltuk",        # 5
+        "Business Koltuk",       # 6
+        "Kalkış (Direkt)",       # 7
+        "Varış (Direkt)",        # 8
+        "Uçuş Süresi",           # 9 ← burası doğru konumda
+        "Uçuş Tipi",             # 10
+        "Aktarma Noktası",       # 11
+        "Kalkış (1. Uçuş)",      # 12
+        "Varış (1. Uçuş)",       # 13
+        "Kalkış (2. Uçuş)",      # 14
+        "Varış (2. Uçuş)"        # 15
+    ]
+
     if flights:
-        return pd.DataFrame(flights, columns=[
-            "Uçuş No", "Kalkış", "Varış", "Tarih", "Kapasite", "Ekonomi", "Business"
+        df = pd.DataFrame(flights, columns=columns)
+        df.fillna("Yok", inplace=True)
+
+        # Tip sıralama ve tarih sıralama
+        df["Uçuş Tipi"] = pd.Categorical(df["Uçuş Tipi"], categories=["Direk Uçuş", "Aktarmalı Uçuş"])
+        df.sort_values(by=["Uçuş Tarihi", "Uçuş Tipi", "Uçuş Numarası"], inplace=True)
+
+        styled_df = df.style.set_properties(**{
+            'text-align': 'center',
+            'white-space': 'pre-wrap',
+            'font-size': '14px'
+        }).set_table_styles([
+            {'selector': 'th', 'props': [('text-align', 'center'), ('background-color', '#f0f2f6')]}
         ])
     else:
-        return pd.DataFrame(columns=[
-            "Uçuş No", "Kalkış", "Varış", "Tarih", "Kapasite", "Ekonomi", "Business"
-        ])
+        df = pd.DataFrame(columns=columns)
+        styled_df = df.style.set_properties(**{
+            'text-align': 'center'
+        })
+
+    st.subheader("📋 Tüm Uçuşlar")
+    st.dataframe(styled_df, use_container_width=True)
 
 
 def list_flights_menu():
