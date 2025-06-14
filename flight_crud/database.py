@@ -20,7 +20,7 @@ def create_tables():
             bus_seats INTEGER,
             departure_time TEXT,
             arrival_time TEXT,
-            duration TEXT,
+            duration INTEGER,
             flight_type TEXT,
             transfer_point TEXT,
             first_departure_time TEXT,
